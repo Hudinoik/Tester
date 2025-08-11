@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manager Login</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="narrow">
+    <h2>Manager Login</h2>
+    <label>Email</label>
+    <input id="email" placeholder="manager@example.com">
+    <label>Password</label>
+    <input id="password" type="password" placeholder="••••••••">
+    <button onclick="login()">Login</button>
+    <p class="muted"><a href="index.html">← Back to directory</a></p>
+  </main>
+
+  <script>
+    async function login(){
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+      const res = await fetch("/login", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if(data.token){
+        localStorage.setItem("token", data.token);
+        localStorage.setItem("role", data.role);
+        localStorage.setItem("shulId", data.shulId);
+        location.href = "manager.html";
+      } else {
+        alert(data.error || "Login failed");
+      }
+    }
+  </script>
+</body>
+</html>

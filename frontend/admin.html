@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="narrow">
+    <h2>Admin Dashboard</h2>
+    <p class="muted">You must be logged in as <b>admin</b> (use the same login as managers). Use this to add shuls and create manager accounts.</p>
+    <section class="panel">
+      <h3>Login</h3>
+      <div class="grid-2">
+        <input id="a_email" placeholder="admin@example.com">
+        <input id="a_password" type="password" placeholder="password">
+      </div>
+      <button onclick="adminLogin()">Login</button>
+      <div id="status" class="muted"></div>
+    </section>
+
+    <section class="panel">
+      <h3>Add Shul</h3>
+      <label>Name</label><input id="s_name">
+      <label>Address</label><input id="s_address">
+      <label>Minyanim (one per line)</label><textarea id="s_minyanim" rows="6"></textarea>
+      <button onclick="addShul()">Create Shul</button>
+      <div id="s_msg" class="muted"></div>
+    </section>
+
+    <section class="panel">
+      <h3>Create Manager</h3>
+      <div class="grid-2">
+        <input id="m_email" placeholder="manager@shul.org">
+        <input id="m_password" type="password" placeholder="password">
+      </div>
+      <label>Shul ID</label><input id="m_shulId" type="number" min="1">
+      <button onclick="addManager()">Create Manager</button>
+      <div id="m_msg" class="muted"></div>
+    </section>
+
+    <p class="muted"><a href="index.html">← Back to directory</a></p>
+  </main>
+
+  <script>
+    let token = null;
+    function setStatus(t){ document.getElementById("status").textContent = t || ""; }
+
+    async function adminLogin(){
+      const email = document.getElementById("a_email").value;
+      const password = document.getElementById("a_password").value;
+      const res = await fetch("/login", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if(data.token && data.role === "admin"){
+        token = data.token;
+        setStatus("Logged in as admin.");
+      } else {
+        setStatus(data.error || "Login failed or not an admin.");
+      }
+    }
+
+    async function addShul(){
+      if(!token) return setStatus("Login as admin first.");
+      const body = {
+        name: document.getElementById("s_name").value.trim(),
+        address: document.getElementById("s_address").value.trim(),
+        minyanim: document.getElementById("s_minyanim").value.trim()
+      };
+      const res = await fetch("/shuls", {
+        method: "POST",
+        headers: { "Content-Type":"application/json", "Authorization": "Bearer " + token },
+        body: JSON.stringify(body)
+      });
+      const j = await res.json();
+      document.getElementById("s_msg").textContent = res.ok ? `Created shul with ID ${j.id}` : (j.error || "Failed");
+    }
+
+    async function addManager(){
+      if(!token) return setStatus("Login as admin first.");
+      const body = {
+        email: document.getElementById("m_email").value.trim(),
+        password: document.getElementById("m_password").value.trim(),
+        role: "manager",
+        shulId: parseInt(document.getElementById("m_shulId").value, 10)
+      };
+      const res = await fetch("/register", {
+        method: "POST",
+        headers: { "Content-Type":"application/json", "Authorization": "Bearer " + token },
+        body: JSON.stringify(body)
+      });
+      const j = await res.json();
+      document.getElementById("m_msg").textContent = res.ok ? `Created manager with ID ${j.id}` : (j.error || "Failed");
+    }
+  </script>
+</body>
+</html>

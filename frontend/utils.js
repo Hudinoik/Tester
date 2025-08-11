@@ -1,0 +1,4 @@
+function haversine(a,b,c,d){function r(x){return x*Math.PI/180}if([a,b,c,d].some(v=>v==null||isNaN(v)))return Infinity;const R=6371;const dLat=r(c-a),dLon=r(d-b);const q=Math.sin(dLat/2)**2+Math.cos(r(a))*Math.cos(r(c))*Math.sin(dLon/2)**2;return R*2*Math.atan2(Math.sqrt(q),Math.sqrt(1-q));}
+function copyText(s){navigator.clipboard?.writeText(s).then(()=>alert("Copied address to clipboard"));}
+function mapLink(s){if(s.lat!=null&&s.lon!=null)return `https://www.google.com/maps?q=${s.lat},${s.lon}`;return `https://www.google.com/maps?q=${encodeURIComponent(s.address||s.name)}`;}
+function favs(){return JSON.parse(localStorage.getItem("favs")||"[]")}function toggleFav(id){let f=favs();if(f.includes(id))f=f.filter(x=>x!==id);else f.push(id);localStorage.setItem("favs",JSON.stringify(f));}function isFav(id){return favs().includes(id);}

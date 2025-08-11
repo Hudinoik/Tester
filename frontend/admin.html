@@ -1,0 +1,174 @@
+<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<title>Admin – Minyanim SA</title><link rel='stylesheet' href='style.css'></head><body>
+<header><div class='brand'><div class='logo'></div><h1>Minyanim SA – Admin</h1></div><nav><a href='index.html'>Public</a></nav></header>
+<div class='container'>
+
+  <div class='card'>
+    <h3>Authenticate</h3>
+    <div class='grid grid-2'><input id='a_email' placeholder='email'><input id='a_password' type='password' placeholder='password'></div>
+    <button onclick='login()'>Login</button>
+    <div id='who' class='muted small'></div>
+  </div>
+
+  <div class='grid grid-2'>
+    <div class='card'>
+      <h3>Users (Gabaim/Admins)</h3>
+      <div id='users'></div>
+      <h4>Create User</h4>
+      <div class='grid grid-2'><input id='u_email' placeholder='email'><input id='u_pw' type='password' placeholder='password'></div>
+      <select id='u_role'><option>gabai</option><option>admin</option><option>superadmin</option></select>
+      <button onclick='createUser()'>Create</button>
+    </div>
+
+    <div class='card'>
+      <h3>Add a Shul</h3>
+      <label>Name</label><input id='add_name'>
+      <label>Address</label><div class='ac'><input id='add_addr'><div id='add_ac' class='ac-results' style='display:none'></div></div>
+      <label>Area</label><input id='add_area'>
+      <button onclick='addShul()'>Add Shul</button>
+    </div>
+  </div>
+
+  <div class='card'>
+    <h3>Edit a Shul</h3>
+    <div class='grid grid-2'>
+      <select id='edit_sel' onchange='loadEdit()'></select>
+      <button class='btn-ghost' onclick='refreshShuls()'>Refresh list</button>
+    </div>
+    <label>Name</label><input id='edit_name'>
+    <label>Address</label><div class='ac'><input id='edit_addr'><div id='edit_ac' class='ac-results' style='display:none'></div></div>
+    <label>Area</label><input id='edit_area'>
+    <button onclick='saveEdit()'>Save Shul</button>
+
+    <h4 style='margin-top:14px'>Minyan Times</h4>
+    <div id='edit_times'></div>
+    <div class='grid grid-2'>
+      <select id='m_type'><option>Shacharis</option><option>Mincha</option><option>Maariv</option><option>Other</option></select>
+      <input id='m_time' placeholder='e.g. 06:15 or Sun-Thu 18:00'>
+    </div>
+    <input id='m_note' placeholder='Note (optional)'>
+    <button onclick='addTime()'>Add Minyan</button>
+    <button class='btn-ghost' onclick='saveTimes()' style='margin-top:8px'>Save All Times</button>
+  </div>
+
+  <div class='card'>
+    <h3>All Shuls (IDs)</h3>
+    <div id='shuls'></div>
+  </div>
+
+</div>
+
+<script>
+let token=null, role=null, shuls=[], currentId=null, times=[];
+
+async function login(){
+  const r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:document.getElementById('a_email').value,password:document.getElementById('a_password').value})});
+  const j=await r.json();
+  if(j.token){ token=j.token; role=j.role; document.getElementById('who').textContent='Logged in as '+role; await refreshShuls(); if(role==='superadmin') await loadUsers(); }
+  else alert(j.error||'Login failed');
+}
+
+async function refreshShuls(){
+  const rs=await fetch('/shuls'); shuls=await rs.json();
+  document.getElementById('shuls').innerHTML = tableShuls(shuls);
+  const sel=document.getElementById('edit_sel');
+  sel.innerHTML = shuls.map(s=>`<option value='${s.id}'>${s.id} – ${s.name}</option>`).join('');
+  attachAC('add_addr','add_ac'); attachAC('edit_addr','edit_ac');
+}
+function tableShuls(arr){ return `<table class='table'><thead><tr><th>ID</th><th>Name</th><th>Address</th></tr></thead><tbody>${arr.map(s=>`<tr><td>${s.id}</td><td>${s.name}</td><td>${s.address||''}</td></tr>`).join('')}</tbody></table>`; }
+
+async function loadUsers(){
+  const ru=await fetch('/users',{headers:{Authorization:'Bearer '+token}});
+  if(!ru.ok){ document.getElementById('users').innerHTML='<p class="muted small">Only superadmin can manage users.</p>'; return; }
+  const users=await ru.json();
+  const userRows = users.map(u=>{
+    const assigned=(u.shulIds||'').split(',').filter(Boolean).map(Number);
+    const options = shuls.map(s=>`<option value='${s.id}' ${assigned.includes(s.id)?'selected':''}>${s.id} – ${s.name}</option>`).join('');
+    return `<tr><td>${u.id}</td><td>${u.email}</td><td>${u.role}</td>
+      <td><select id='assign-${u.id}' multiple size='5'>${options}</select></td>
+      <td>
+        <button class='btn-ghost' onclick='saveAssign(${u.id})'>Save</button>
+        <button class='btn-ghost' onclick='promote(${u.id},"admin")'>Make Admin</button>
+        <button class='btn-ghost' onclick='resetPw(${u.id})'>Reset PW</button>
+      </td></tr>`;
+  }).join('');
+  document.getElementById('users').innerHTML = `<table class='table'><thead><tr><th>ID</th><th>Email</th><th>Role</th><th>Shuls</th><th>Actions</th></tr></thead><tbody>${userRows}</tbody></table>`;
+}
+
+async function createUser(){
+  if(!token) return alert('Login first');
+  const body={ email:document.getElementById('u_email').value.trim(), password:document.getElementById('u_pw').value.trim(), role:document.getElementById('u_role').value };
+  const r=await fetch('/users',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify(body)});
+  const j=await r.json(); if(r.ok){ alert('User created #'+j.id); loadUsers(); } else alert(j.error||'Failed');
+}
+
+async function saveAssign(uid){
+  const sel=document.getElementById('assign-'+uid);
+  const ids=Array.from(sel.selectedOptions).map(o=>parseInt(o.value,10));
+  const r=await fetch('/users/'+uid+'/shuls',{method:'PUT',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify(ids)});
+  alert(r.ok?'Assignments saved':'Failed');
+}
+
+async function promote(id,roleNew){
+  const r=await fetch('/users/'+id,{method:'PUT',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({role:roleNew})});
+  if(r.ok) loadUsers(); else alert('Failed');
+}
+async function resetPw(id){
+  const pw=prompt('New password:'); if(!pw) return;
+  const r=await fetch('/users/'+id,{method:'PUT',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({password:pw})});
+  alert(r.ok?'Updated':'Failed');
+}
+
+function attachAC(inputId, resId){
+  const i=document.getElementById(inputId); const rs=document.getElementById(resId); let t=null;
+  i.addEventListener('input', ()=>{
+    clearTimeout(t); const q=i.value.trim();
+    if(!q){ rs.innerHTML=''; rs.style.display='none'; return; }
+    t=setTimeout(async()=>{
+      try{ const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&q='+encodeURIComponent(q)+'&limit=6');
+        const data=await r.json(); rs.innerHTML=data.map(v=>`<div class='ac-item' data-v='${v.display_name}'>${v.display_name}</div>`).join('');
+        rs.style.display=data.length?'block':'none';
+      }catch(e){ rs.innerHTML=''; rs.style.display='none'; }
+    }, 300);
+  });
+  rs.addEventListener('click', e=>{
+    const el=e.target.closest('.ac-item'); if(!el) return; i.value=el.getAttribute('data-v'); rs.innerHTML=''; rs.style.display='none';
+  });
+}
+
+async function addShul(){
+  const body={ name:document.getElementById('add_name').value.trim(), address:document.getElementById('add_addr').value.trim(), area:document.getElementById('add_area').value.trim() };
+  const r=await fetch('/shuls',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify(body)});
+  const j=await r.json(); if(r.ok){ alert('Shul created ID '+j.id); await refreshShuls(); } else alert(j.error||'Failed');
+}
+
+// EDIT section
+async function loadEdit(){
+  currentId=parseInt(document.getElementById('edit_sel').value,10);
+  const r=await fetch('/shuls/'+currentId+'/full'); const s=await r.json();
+  document.getElementById('edit_name').value=s.name||'';
+  document.getElementById('edit_addr').value=s.address||'';
+  document.getElementById('edit_area').value=s.area||'';
+  times=(s.minyanim||[]).map(m=>({type:m.type,time:m.time,note:m.note||''}));
+  renderTimes();
+}
+function renderTimes(){
+  const box=document.getElementById('edit_times');
+  if(!times.length){ box.innerHTML='<p class="muted small">No times yet.</p>'; return; }
+  box.innerHTML = `<table class="table"><thead><tr><th>Type</th><th>Time</th><th>Note</th><th></th></tr></thead><tbody>` +
+    times.map((m,i)=>`<tr><td>${m.type}</td><td>${m.time}</td><td>${m.note||''}</td><td><button class='btn-ghost' onclick='remTime(${i})'>Remove</button></td></tr>`).join('') +
+    `</tbody></table>`;
+}
+function addTime(){ const t=document.getElementById('m_type').value; const tm=document.getElementById('m_time').value.trim(); const n=document.getElementById('m_note').value.trim(); if(!tm) return alert('Enter a time'); times.push({type:t,time:tm,note:n}); document.getElementById('m_time').value=''; document.getElementById('m_note').value=''; renderTimes(); }
+function remTime(i){ times.splice(i,1); renderTimes(); }
+async function saveEdit(){
+  const body={ name:document.getElementById('edit_name').value.trim(), address:document.getElementById('edit_addr').value.trim(), area:document.getElementById('edit_area').value.trim() };
+  const r=await fetch('/shuls/'+currentId,{method:'PUT',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify(body)});
+  alert(r.ok?'Saved shul.':'Failed'); if(r.ok) await refreshShuls();
+}
+async function saveTimes(){
+  const r=await fetch('/shuls/'+currentId+'/minyanim',{method:'PUT',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify(times)});
+  alert(r.ok?'Saved all times.':'Failed');
+}
+</script>
+</body></html>
